@@ -1,0 +1,95 @@
+# -----------------------------
+# Python bytecode / cache
+# -----------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+# -----------------------------
+# Virtual environments
+# -----------------------------
+env/
+venv/
+ENV/
+.venv/
+
+# -----------------------------
+# Distribution / packaging
+# -----------------------------
+.Python
+build/
+dist/
+downloads/
+*.egg-info/
+*.egg
+*.whl
+*.tar.gz
+
+# -----------------------------
+# Logs
+# -----------------------------
+*.log
+*.err
+*.out
+
+# -----------------------------
+# IDE / Editor files
+# -----------------------------
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# -----------------------------
+# Environment variables / secrets
+# -----------------------------
+.env
+.env.*.local
+.supabase/
+
+# -----------------------------
+# Database files
+# -----------------------------
+*.db
+*.sqlite3
+alembic/versions/*.pyc
+
+# -----------------------------
+# Alembic / migrations cache
+# -----------------------------
+alembic/versions/*.pyc
+alembic/versions/*.py~
+
+# -----------------------------
+# Supabase / Storage cache
+# -----------------------------
+supabase/.cache/
+
+# -----------------------------
+# Uploaded files (team logos, tournament images)
+# -----------------------------
+uploads/
+media/
+static/
+
+# -----------------------------
+# Testing / coverage
+# -----------------------------
+.tox/
+.nox/
+.coverage
+coverage.xml
+*.cover
+htmlcov/
+.pytest_cache/
+*.hypothesis/
+
+# -----------------------------
+# Docker / containers
+# -----------------------------
+docker-compose.override.yml
+*.dockerfile
+
+alembic/
+alembic.ini
