@@ -110,3 +110,36 @@ class ApplicationRead(ApplicationBase):
 class ApplicationReadWithJob(ApplicationRead):
     job: JobRead | None = Field(None, description="Details of the job this application is for")
 
+
+
+
+# --------------------------
+# PROFILE UPDATE SCHEMAS
+# --------------------------
+class JobSeekerUpdate(BaseModel):
+    full_name: str | None = Field(None, description="Full name of the job seeker", example="Jane Doe")
+    headline: str | None = Field(None, description="Professional headline", example="Passionate Full Stack Developer")
+    bio: str | None = Field(None, description="Short biography", example="I have 5 years of experience in...")
+    skills: list[str] | None = Field(None, description="List of skills", example=["React", "Node.js"])
+    years_experience: int | None = Field(None, description="Years of professional experience", example=5)
+    phone_number: str | None = Field(None, description="Contact phone number", example="+1234567890")
+    linked_in_url: str | None = Field(None, description="LinkedIn profile URL", example="https://linkedin.com/in/janedoe")
+    portfolio_url: str | None = Field(None, description="Portfolio or personal website URL", example="https://janedoe.dev")
+
+
+class RecruiterUpdate(BaseModel):
+    company: str | None = Field(None, description="Company name", example="Innovative Tech")
+    about_company: str | None = Field(None, description="Description of the company", example="We build cutting edge solutions...")
+    website_url: str | None = Field(None, description="Company website URL", example="https://innovative.tech")
+    industry: str | None = Field(None, description="Industry sector", example="Technology")
+    company_size: str | None = Field(None, description="Approximate number of employees", example="50-200")
+    location: str | None = Field(None, description="Company headquarters location", example="San Francisco, CA")
+
+
+class PasswordUpdate(BaseModel):
+    old_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6)
+
+
+class DeleteAccountSchema(BaseModel):
+    password: str = Field(..., description="User's current password to confirm deletion")
