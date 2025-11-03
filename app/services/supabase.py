@@ -74,3 +74,56 @@ def signup(
 
     return response.user
 
+
+
+def reset_password(email: EmailStr) -> bool:
+    try:
+        # Preferred API shape (newer clients)
+        resp = supabase.auth.reset_password_for_email(email=email)
+    except Exception:
+        # Fallback to older/api namespace
+        try:
+            resp = supabase.auth.reset_password_for_email(email)
+        except Exception:
+            return False
+
+    # resp may be dict-like or an object with attributes
+    # Normalize to check for errors
+    error = None
+    try:
+        if isinstance(resp, dict):
+            # supabase-py sometimes returns {'data': None, 'error': None}
+            error = resp.get("error")
+        else:
+            error = getattr(resp, "error", None)
+    except Exception:
+        error = None
+
+    if error:
+        return False
+
+    return True
+
+
+def resend_verification_email(email: EmailStr) -> bool:
+    """
+    Resends the verification email to the user.
+    """
+    try:
+        resp = supabase.auth.resend({"type": "signup", "email": email})
+    except Exception:
+        return False
+
+    error = None
+    try:
+        if isinstance(resp, dict):
+            error = resp.get("error")
+        else:
+            error = getattr(resp, "error", None)
+    except Exception:
+        error = None
+
+    if error:
+        return False
+
+    return True
