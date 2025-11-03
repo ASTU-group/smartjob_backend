@@ -127,3 +127,27 @@ def resend_verification_email(email: EmailStr) -> bool:
         return False
 
     return True
+
+
+def delete_user(user_id: str) -> None:
+    """
+    Deletes a user from Supabase Auth.
+    Requires SERVICE_ROLE_KEY to be set in configuration.
+    """
+    try:
+        supabase.auth.admin.delete_user(user_id)
+    except Exception as e:
+        print(f"Failed to delete user {user_id}: {e}")
+        # In a real app, you might queue this for a background worker check
+        # to ensure eventual consistency.
+        pass
+
+
+def delete_file(bucket: str, path: str) -> None:
+    """
+    Deletes a file from Supabase storage.
+    """
+    try:
+        supabase.storage.from_(bucket).remove([path])
+    except Exception as e:
+        print(f"Failed to delete file {path} from {bucket}: {e}")
