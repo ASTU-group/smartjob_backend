@@ -39,3 +39,13 @@ def upload_file(
     return public_url
 
 
+
+def login(email: EmailStr, password: str) -> Optional[str]:
+    # Use a temporary client to avoid polluting the global client's session
+    temp_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+    response = temp_client.auth.sign_in_with_password(
+        {"email": email, "password": password}
+    )
+    print(response)
+    token = getattr(response.session, "access_token", None)
+    return token
