@@ -49,3 +49,28 @@ def login(email: EmailStr, password: str) -> Optional[str]:
     print(response)
     token = getattr(response.session, "access_token", None)
     return token
+
+def signup(
+    email: EmailStr,
+    password: str,
+    role: Literal["job_seeker", "employer"],
+) -> str:
+    # Use a temporary client
+    temp_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+    response = temp_client.auth.sign_up(
+        {
+            "email": email,
+            "password": password,
+            "options": {
+                "data": {
+                    "role": role,
+                }
+            },
+        }
+    )
+
+    if not response.user:
+        raise ValueError("Signup failed")
+
+    return response.user
+
