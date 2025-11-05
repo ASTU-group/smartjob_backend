@@ -62,3 +62,124 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
 
+
+
+# --------------------------
+# Job Seeker Signup
+# --------------------------
+@router.post("/signup/job_seeker", status_code=status.HTTP_201_CREATED, summary="Job Seeker Signup", description="Register a new job seeker. Requires a resume upload (PDF) and optional profile picture.")
+def signup_job_seeker(
+    email: str = Form(...),
+    password: str = Form(...),
+    full_name: str = Form(...),
+    resume: UploadFile = File(...),
+    profile_picture: UploadFile = File(None),
+    # Extended Fields
+    headline: str = Form(None),
+    bio: str = Form(None),
+    skills: str = Form(None), # Comma-separated string, we'll convert to list
+    years_experience: int = Form(None),
+    phone_number: str = Form(None),
+    linked_in_url: str = Form(None),
+    portfolio_url: str = Form(None)
+):
+    """
+    Sign up a job seeker with Resume and optional Profile Picture:
+    1. Create user in Supabase Auth.
+    2. Upload resume to 'resumes'.
+    3. Upload profile picture (optional) to 'avatars'.
+    4. Insert profile into 'job_seeker' table.
+    """
+    # Validate PDF
+    if resume.content_type != "application/pdf":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF files are allowed for resumes."
+        )
+    
+    # Validate Image (if provided)
+    if profile_picture and not profile_picture.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only image files are allowed for profile picture."
+        )
+
+    # 1. Sign up in Supabase Auth
+    user = supabase.signup(
+        email,
+        password,
+        "job_seeker",
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Signup failed"
+        )
+    
+    user_id = user.id
+    resume_path = None
+    pic_path = None
+
+    try:
+        # 2. Upload Resume
+        file_content = resume.file.read()
+        resume_path = f"{user_id}_resume.pdf"
+        # We still use upload_file, but it returns a public URL we might ignore or we can bypass it
+        supabase.supabase.storage.from_("resumes").upload(
+            path=resume_path,
+            file=file_content,
+            file_options={"content-type": "application/pdf", "upsert": "true"}
+        )
+        # Get Signed URL (1 year)
+        resume_signed = supabase.supabase.storage.from_("resumes").create_signed_url(resume_path, 31536000)
+        resume_url = resume_signed.get("signedURL") or resume_signed.get("signed_url")
+
+        # 3. Upload Profile Picture (if provided)
+        profile_pic_url = None
+        if profile_picture:
+            pic_content = profile_picture.file.read()
+            pic_path = f"{user_id}_avatar.{profile_picture.filename.split('.')[-1]}"
+            supabase.supabase.storage.from_("avatars").upload(
+                path=pic_path,
+                file=pic_content,
+                file_options={"content-type": profile_picture.content_type, "upsert": "true"}
+            )
+            pic_signed = supabase.supabase.storage.from_("avatars").create_signed_url(pic_path, 31536000)
+            profile_pic_url = pic_signed.get("signedURL") or pic_signed.get("signed_url")
+
+        # Parse skills if provided
+        skill_list = [s.strip() for s in skills.split(',')] if skills else []
+
+        # 4. Insert into 'job_seeker' table
+        supabase.supabase.table("job_seeker").insert({
+            "id": user_id,
+            "full_name": full_name,
+            "resume_url": resume_url,
+            "profile_picture_url": profile_pic_url,
+            # Extended fields
+            "headline": headline,
+            "bio": bio,
+            "skills": skill_list,
+            "years_experience": years_experience,
+            "phone_number": phone_number,
+            "linked_in_url": linked_in_url,
+            "portfolio_url": portfolio_url
+        }).execute()
+        
+    except Exception as e:
+        # Rollback: Delete files and user
+        if resume_path:
+            supabase.delete_file("resumes", resume_path)
+        if pic_path:
+            supabase.delete_file("avatars", pic_path)
+        supabase.delete_user(user_id)
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Signup failed and rolled back: {str(e)}"
+        )
+
+    return {
+        "message": "Job seeker registered successfully. Resume uploaded.",
+        "user_id": user_id
+    }
