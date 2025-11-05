@@ -183,3 +183,90 @@ def signup_job_seeker(
         "message": "Job seeker registered successfully. Resume uploaded.",
         "user_id": user_id
     }
+
+# --------------------------
+# Recruiter Signup
+# --------------------------
+@router.post("/signup/recruiter", status_code=status.HTTP_201_CREATED, summary="Recruiter Signup", description="Register a new recruiter/employer with company details and optional profile picture.")
+def signup_recruiter(
+    email: str = Form(...),
+    password: str = Form(...),
+    company_name: str = Form(...),
+    profile_picture: UploadFile = File(None),
+    # Extended fields
+    about_company: str = Form(None),
+    website_url: str = Form(None),
+    industry: str = Form(None),
+    company_size: str = Form(None),
+    location: str = Form(None)
+):
+    """
+    Sign up a recruiter/employer with Profile Picture:
+    1. Create user in Supabase Auth.
+    2. Upload profile picture (optional) to 'avatars'.
+    3. Insert profile into 'recruiters' table in Supabase.
+    """
+    # Validate Image (if provided)
+    if profile_picture and not profile_picture.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only image files are allowed for profile picture."
+        )
+
+    # 1. Sign up in Supabase Auth
+    user = supabase.signup(
+        email,
+        password,
+        "employer", 
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Signup failed"
+        )
+    
+    user_id = user.id
+    profile_pic_url = None
+    pic_path = None
+
+    try:
+        # 2. Upload Profile Picture (if provided)
+        if profile_picture:
+            file_content = profile_picture.file.read()
+            pic_path = f"{user_id}_avatar.{profile_picture.filename.split('.')[-1]}"
+            profile_pic_url = supabase.upload_file(
+                bucket="avatars",
+                file_data=file_content,
+                file_name=pic_path,
+                content_type=profile_picture.content_type,
+                path_prefix="" # Root of bucket
+            )
+
+        # 3. Insert into 'recruiters' table
+        supabase.supabase.table("recruiters").insert({
+            "id": user_id,
+            "company": company_name,
+            "profile_picture_url": profile_pic_url,
+            # Extended fields
+            "about_company": about_company,
+            "website_url": website_url,
+            "industry": industry,
+            "company_size": company_size,
+            "location": location,
+            "email": email,
+        }).execute()
+    except Exception as e:
+        # Rollback
+        if pic_path:
+             supabase.delete_file("avatars", pic_path)
+        supabase.delete_user(user_id)
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Signup failed and rolled back: {str(e)}"
+        )
+
+    return {
+        "message": "Recruiter registered successfully. Please check your email to verify your account.",
+        "user_id": user_id
+    }
