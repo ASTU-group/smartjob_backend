@@ -270,3 +270,29 @@ def signup_recruiter(
         "message": "Recruiter registered successfully. Please check your email to verify your account.",
         "user_id": user_id
     }
+
+
+# --------------------------
+# Forgot Password
+# --------------------------
+@router.post("/forgot-password", status_code=status.HTTP_200_OK, summary="Forgot Password", description="Sends a password reset email to the specified user email address.")
+async def forgot_password_route(data: ForgotPasswordSchema):
+    """
+    Sends a password reset email to the user.
+    """
+    try:
+        sent = supabase.reset_password(data.email)
+        if not sent:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to send reset email to {data.email}",
+            )
+        return {
+            "message": "If an account with this email exists, a password reset link has been sent."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
