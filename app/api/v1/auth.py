@@ -323,3 +323,106 @@ async def resend_verification_route(data: ResendEmailSchema):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
 
+
+
+# --------------------------
+# OAuth Profile Completion
+# --------------------------
+@router.post("/oauth/complete-profile", status_code=status.HTTP_201_CREATED, summary="Complete OAuth Profile", description="Complete profile creation for OAuth authenticated users (Google, etc.) by selecting a role and providing required details.")
+async def complete_oauth_profile(
+    profile_data: OAuthCompleteProfile,
+    current_user = Depends(get_current_user)
+):
+    """
+    Complete profile for OAuth users.
+    
+    OAuth users (Google, GitHub, etc.) are created in auth.users but don't have
+    profiles in role-specific tables. This endpoint creates the profile based on
+    the selected role.
+    
+    Required fields:
+    - For job_seeker: full_name is required
+    - For recruiter: company_name is required
+    """
+    user_id = current_user.id
+    
+    # Check if user already has a profile
+    seeker_check = supabase.supabase.table("job_seeker").select("id").eq("id", user_id).execute()
+    recruiter_check = supabase.supabase.table("recruiters").select("id").eq("id", user_id).execute()
+    
+    if seeker_check.data or recruiter_check.data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Profile already exists for this user."
+        )
+    
+    try:
+        if profile_data.role == RoleEnum.job_seeker:
+            # Validate required fields for job seeker
+            if not profile_data.full_name:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="full_name is required for job seekers."
+                )
+            
+            # Create job seeker profile
+            supabase.supabase.table("job_seeker").insert({
+                "id": user_id,
+                "full_name": profile_data.full_name,
+                "resume_url": None,  # Can be uploaded later via profile update
+                "profile_picture_url": None,
+                "headline": None,
+                "bio": None,
+                "skills": [],
+                "years_experience": None,
+                "phone_number": None,
+                "linked_in_url": None,
+                "portfolio_url": None
+            }).execute()
+            
+            return {
+                "message": "Job seeker profile created successfully.",
+                "user_id": user_id,
+                "role": "job_seeker"
+            }
+            
+        elif profile_data.role == RoleEnum.recruiter:
+            # Validate required fields for recruiter
+            if not profile_data.company_name:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="company_name is required for recruiters."
+                )
+            
+            # Create recruiter profile
+            supabase.supabase.table("recruiters").insert({
+                "id": user_id,
+                "company": profile_data.company_name,
+                "profile_picture_url": None,
+                "about_company": None,
+                "website_url": None,
+                "industry": None,
+                "company_size": None,
+                "location": None,
+                "email": profile_data.email
+            }).execute()
+            
+            return {
+                "message": "Recruiter profile created successfully.",
+                "user_id": user_id,
+                "role": "recruiter"
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid role specified."
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Profile creation failed: {str(e)}"
+        )
+
