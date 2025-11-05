@@ -296,3 +296,30 @@ async def forgot_password_route(data: ForgotPasswordSchema):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+
+
+# --------------------------
+# Resend Verification Email
+# --------------------------
+@router.post("/resend-verification", status_code=status.HTTP_200_OK, summary="Resend Verification Email", description="Resends a verification email to the user if they haven't verified their account yet.")
+async def resend_verification_route(data: ResendEmailSchema):
+    """
+    Resends the verification email to the user.
+    """
+    try:
+        sent = supabase.resend_verification_email(data.email)
+        if not sent:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to resend verification email to {data.email}. The user might already be verified or an error occurred.",
+            )
+        return {
+            "message": f"Verification email has been resent to {data.email} if the account is unverified."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
