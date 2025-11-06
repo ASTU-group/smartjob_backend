@@ -153,3 +153,64 @@ async def apply_to_job(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+
+@router.get("/job/{job_id}", summary="Get Job Applications", description="Retrieve all applications for a specific job with optional search and filters. Only accessible by the recruiter who posted the job.")
+def get_job_applications(
+    job_id: str,
+    current_user = Depends(get_current_user),
+    q: str | None = None,
+    status_filter: str | None = None,
+    min_score: int | None = None,
+    max_score: int | None = None
+):
+    """
+    Get all applications for a specific job.
+    Only the Recruiter who posted the job can see this.
+    
+    Parameters:
+    - **q**: Search by applicant name (case-insensitive)
+    - **status_filter**: Filter by application status (e.g., "pending", "interviewing", "hired", "rejected")
+    - **min_score**: Filter applications with ai_score >= this value
+    - **max_score**: Filter applications with ai_score <= this value
+    """
+    user_id = current_user.id
+    
+    # 1. Check Job Ownership
+    job_data = supabase.table("job").select("recruiter_id").eq("id", job_id).execute()
+    if not job_data.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    recruiter_id = job_data.data[0].get("recruiter_id")
+    if str(recruiter_id) != str(user_id):
+        raise HTTPException(status_code=403, detail="You are not authorized to view applications for this job.")
+
+    # 2. Fetch Applications with Job Seeker details
+    # Supabase join syntax: select(*, job_seeker(*))
+    try:
+        query = supabase.table("application").select("*, job_seeker(*)").eq("job_id", job_id)
+        
+        # Apply status filter
+        if status_filter:
+            query = query.eq("status", status_filter)
+        
+        # Apply AI score filters
+        if min_score is not None:
+            query = query.gte("ai_score", min_score)
+        
+        if max_score is not None:
+            query = query.lte("ai_score", max_score)
+        
+        response = query.execute()
+        
+        # If searching by applicant name, filter in Python (since we can't filter on joined table)
+        if q and response.data:
+            filtered_data = [
+                app for app in response.data
+                if app.get("job_seeker") and q.lower() in app["job_seeker"].get("full_name", "").lower()
+            ]
+            return filtered_data
+        
+        return response.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
