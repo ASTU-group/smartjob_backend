@@ -72,3 +72,84 @@ def get_my_applications(
             detail=str(e)
         )
 
+
+
+@router.post("/", status_code=status.HTTP_201_CREATED, summary="Apply to Job", description="Submit a job application. Restricted to job seekers. Checks for job deadline and existing applications.")
+async def apply_to_job(
+    application: ApplicationCreate, 
+    background_tasks: BackgroundTasks,
+    current_user = Depends(get_current_user)
+):
+    """
+    Apply to a job.
+    Only job seekers can apply.
+    """
+    user_id = current_user.id
+    
+    # 1. Verify Role (Checking table is safer)
+    seeker_check = supabase.table("job_seeker").select("id, resume_url, full_name").eq("id", user_id).execute()
+    if not seeker_check.data:
+         raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only job seekers can apply to jobs."
+        )
+    
+    seeker_data = seeker_check.data[0]
+    resume_url = seeker_data.get("resume_url")
+    seeker_name = seeker_data.get("full_name")
+    seeker_email = current_user.email  # Use email from auth user object
+
+    # 1.5 Check Job Deadline and get details
+    from datetime import datetime, timezone
+    # Join with recruiters to get company name
+    job_resp = supabase.table("job").select("deadline, title, recruiters(company)").eq("id", str(application.job_id)).execute()
+    if not job_resp.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job_info = job_resp.data[0]
+    deadline_str = job_info.get("deadline")
+    job_title = job_info.get("title")
+    company_name = job_info.get("recruiters", {}).get("company", "Unknown Company")
+    if deadline_str:
+        deadline = datetime.fromisoformat(deadline_str.replace('Z', '+00:00'))
+        if datetime.now(timezone.utc) > deadline:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Application deadline has passed. You cannot apply to this job anymore."
+            )
+
+    # 2. (Optional) Check if already applied
+    # Assuming unique constraint on (job_id, job_seeker_id) might exist in DB
+    # or we check manually:
+    existing = supabase.table("application").select("id").eq("job_id", str(application.job_id)).eq("job_seeker_id", user_id).execute()
+    if existing.data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You have already applied to this job."
+        )
+
+    # 3. Apply
+    try:
+        response = supabase.table("application").insert({
+            "job_id": str(application.job_id),
+            "job_seeker_id": user_id,
+            "resume_url": resume_url,
+            "cover_letter": application.cover_letter,
+            "email":seeker_email
+        }).execute()
+        
+        # Trigger confirmation email in background
+        background_tasks.add_task(
+            send_application_confirmation,
+            job_seeker_email=current_user.email,
+            job_title=job_title,
+            company_name=company_name,
+            job_seeker_name=seeker_name,
+        )
+
+        return response.data[0]
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
