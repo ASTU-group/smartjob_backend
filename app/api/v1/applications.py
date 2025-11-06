@@ -214,3 +214,45 @@ def get_job_applications(
         return response.data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+@router.put("/{application_id}/status", summary="Update Application Status", description="Update the status of a job application (e.g., to 'interviewing' or 'hired'). Restricted to the recruiter who posted the job.")
+def update_application_status(
+    application_id: str, 
+    update_data: ApplicationUpdate,
+    current_user = Depends(get_current_user)
+):
+    """
+    Update application status (e.g. 'interviewing', 'hired').
+    Only the recruiter who owns the job can do this.
+    """
+    user_id = current_user.id
+    
+    # 1. Fetch Application to get Job ID
+    app_data = supabase.table("application").select("job_id").eq("id", application_id).execute()
+    if not app_data.data:
+        raise HTTPException(status_code=404, detail="Application not found")
+        
+    job_id = app_data.data[0].get("job_id")
+    
+    # 2. Check Job Ownership
+    # We could do a join, or just a second query
+    job_data = supabase.table("job").select("recruiter_id").eq("id", str(job_id)).execute()
+    if not job_data.data:
+         # Should not happen if FK integrity holds
+         raise HTTPException(status_code=404, detail="Job not found")
+         
+    recruiter_id = job_data.data[0].get("recruiter_id")
+    if str(recruiter_id) != str(user_id):
+        raise HTTPException(status_code=403, detail="You are not authorized to update this application.")
+
+    # 3. Update Status
+    try:
+        update_payload = {"status": update_data.status}
+        if update_data.ai_score is not None:
+            update_payload["ai_score"] = update_data.ai_score
+        if update_data.ai_reason is not None:
+            update_payload["ai_reason"] = update_data.ai_reason
+
+        response = supabase.table("application").update(update_payload).eq("id", application_id).execute()
+        return response.data[0]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
