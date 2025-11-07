@@ -227,3 +227,53 @@ def update_resume(file: UploadFile = File(...), current_user = Depends(get_curre
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/me/legal-document", summary="Upload Legal Document", description="Upload or update legal document for recruiter verification. Only PDF files are accepted. Recruiters only.")
+def update_legal_document(file: UploadFile = File(...), current_user = Depends(get_current_user)):
+    """
+    Update legal document (Recruiter only).
+    Sets is_verified to FALSE on upload - admin must manually verify.
+    """
+    if file.content_type != "application/pdf":
+         raise HTTPException(status_code=400, detail="Legal document must be a PDF")
+
+    user_id = current_user.id
+    
+    # Verify Role - must be recruiter
+    recruiter = supabase.table("recruiters").select("id, is_verified").eq("id", user_id).execute()
+    if not recruiter.data:
+         raise HTTPException(status_code=403, detail="Only recruiters can upload legal documents")
+         
+    try:
+        file_content = file.file.read()
+        file_path = f"{user_id}_legal_document.pdf"
+        
+        # Upsert file to document bucket
+        supabase.storage.from_("documents").upload(
+            file_path,
+            file_content,
+            file_options={"upsert": "true", "content-type": "application/pdf"}
+        )
+        
+        # Get Signed URL (valid for 1 year)
+        signed_url_resp = supabase.storage.from_("documents").create_signed_url(file_path, 31536000)
+        final_url = signed_url_resp.get("signedURL") if isinstance(signed_url_resp, dict) else getattr(signed_url_resp, "signed_url", None)
+
+        if not final_url:
+            final_url = supabase.storage.from_("documents").get_public_url(file_path)
+        
+        # Update DB - set legal_document_url and is_verified to FALSE
+        res = supabase.table("recruiters").update({
+            "legal_document_url": final_url,
+            "is_verified": False
+        }).eq("id", user_id).execute()
+        
+        updated_recruiter = res.data[0]
+        
+        return {
+            "message": "Legal document uploaded successfully. Your account will be reviewed by an admin.", 
+            "url": final_url,
+            "is_verified": updated_recruiter.get("is_verified", False)
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
