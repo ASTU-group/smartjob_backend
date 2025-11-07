@@ -115,3 +115,74 @@ def update_password(data: PasswordUpdate, current_user = Depends(get_current_use
         return {"message": "Password updated successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+@router.post("/me/avatar", summary="Upload Profile Picture", description="Upload or update the currently authenticated user's profile picture. Supports image files.")
+def update_avatar(file: UploadFile = File(...), current_user = Depends(get_current_user)):
+    """
+    Update profile picture.
+    Removes old picture if strictly necessary, or just overwrites if using same name.
+    """
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+        
+    user_id = current_user.id
+    
+    # Determine table
+    table = "job_seeker"
+    current_data = supabase.table("job_seeker").select("profile_picture_url").eq("id", user_id).execute()
+    if not current_data.data:
+        table = "recruiters"
+        current_data = supabase.table("recruiters").select("profile_picture_url").eq("id", user_id).execute()
+        if not current_data.data:
+             raise HTTPException(status_code=404, detail="Profile not found")
+    
+    # Upload
+    try:
+        file_content = file.file.read()
+        file_ext = file.filename.split('.')[-1]
+        file_path = f"{user_id}_avatar.{file_ext}"
+        
+        # Overwrite is default behavior for Supabase if configured, or we delete first
+        # Ideally we might want to delete the *old* one if the extension changed
+        # For simplicity, we just upload
+        
+        public_url = supabase.storage.from_("avatars").upload(
+            file_path, 
+            file_content, 
+            file_options={"content-type": file.content_type, "upsert": "true"}
+        )
+        # Note: upload returns a specific response object, or we use our helper?
+        # Let's use the object direct method or our helper in services.
+        # But wait, our helper `upload_file` generates a UUID name.
+        # Here we want a consistent name or to specifically update the DB.
+        
+        # Let's use the storage client directly to handle upsert properly or specific naming
+        # actually, getting the public URL is separate.
+        
+        # Re-using the logic from auth:
+        # We need the Public URL. 
+        # If we use upsert, the path remains valid.
+        
+        # Let's implement manually to be safe on 'upsert'
+        res = supabase.storage.from_("avatars").upload(
+            file_path,
+            file_content,
+            file_options={"upsert": "true", "content-type": file.content_type}
+        )
+        
+        # Get Signed URL (valid for 1 year to avoid immediate expiration)
+        # Note: In a real production app, you'd generate this on the fly during GET /me
+        # but for now, we'll store a long-lived one to fix your immediate access issue.
+        signed_url_resp = supabase.storage.from_("avatars").create_signed_url(file_path, 31536000)
+        final_url = signed_url_resp.get("signedURL") if isinstance(signed_url_resp, dict) else getattr(signed_url_resp, "signed_url", None)
+        
+        if not final_url:
+            # Fallback to public if signed fails
+            final_url = supabase.storage.from_("avatars").get_public_url(file_path)
+
+        # Update DB
+        supabase.table(table).update({"profile_picture_url": final_url}).eq("id", user_id).execute()
+        
+        return {"message": "Avatar updated", "url": final_url}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
