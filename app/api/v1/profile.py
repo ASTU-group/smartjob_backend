@@ -76,3 +76,42 @@ def update_profile(
         return response.data[0]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+@router.put("/me/password", summary="Change Password", description="Update the currently authenticated user's password. Requires validation of the old password.")
+def update_password(data: PasswordUpdate, current_user = Depends(get_current_user)):
+    """
+    Update password.
+    Verifies old_password first by attempting to sign in.
+    """
+    # 1. Verify Old Password & Get Session
+    from supabase import create_client
+    from app.core.config import settings
+    
+    # Use a fresh client to avoid global state issues and ensure clean auth
+    auth_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+    
+    try:
+        # Attempt to sign in with old credentials
+        auth_response = auth_client.auth.sign_in_with_password({
+            "email": current_user.email,
+            "password": data.old_password
+        })
+        
+        if not auth_response.session:
+             raise ValueError("Login failed")
+             
+    except Exception:
+         raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Incorrect old password."
+        )
+
+    # 2. Update Password
+    try:
+        # Supabase allows updating the authenticated user's password
+        # Now auth_client has the session from the sign_in above
+        auth_client.auth.update_user({
+            "password": data.new_password
+        })
+        return {"message": "Password updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
