@@ -277,3 +277,88 @@ def update_legal_document(file: UploadFile = File(...), current_user = Depends(g
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT, summary="Delete Account", description="Permanently delete the currently authenticated user's account, including their profile and all uploaded assets (avatars, resumes). Requires password confirmation.")
+def delete_my_account(data: DeleteAccountSchema, current_user = Depends(get_current_user)):
+    """
+    Permanently delete account and all associated assets.
+    """
+    user_id = current_user.id
+    
+    # 0. Verify Password
+    from supabase import create_client
+    from app.core.config import settings
+    
+    auth_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+    
+    try:
+        auth_response = auth_client.auth.sign_in_with_password({
+            "email": current_user.email,
+            "password": data.password
+        })
+        if not auth_response.session:
+             raise ValueError("Verification failed")
+    except Exception:
+         raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Incorrect password. Deletion aborted."
+        )
+
+    # 1. Determine Role and Fetch File Paths
+    seeker_data = supabase.table("job_seeker").select("profile_picture_url, resume_url").eq("id", user_id).execute()
+    recruiter_data = supabase.table("recruiters").select("profile_picture_url, legal_document_url").eq("id", user_id).execute()
+    
+    try:
+        # 2. Cleanup Storage
+        if seeker_data.data:
+            # Delete Avatar
+            avatar_url = seeker_data.data[0].get("profile_picture_url")
+            if avatar_url:
+                # Extract path from URL - usually ends in filename
+                # In our case it's f"{user_id}_avatar.{ext}"
+                # We can just try deleting the known naming pattern
+                # Or extract from URL if it's external. 
+                # Our upload logic uses f"{user_id}_avatar.{file_ext}"
+                # Let's try to delete by the expected pattern in the bucket.
+                # Since multiple extensions are possible, we might need to check the URL
+                # but based on our upload code, it's user_id_avatar...
+                import re
+                match = re.search(rf"({user_id}_avatar\.[^?]+)", avatar_url)
+                if match:
+                    delete_file("avatars", match.group(1))
+            
+            # Delete Resume
+            resume_url = seeker_data.data[0].get("resume_url")
+            if resume_url:
+                resume_path = f"{user_id}_resume.pdf"
+                delete_file("resumes", resume_path)
+            
+            # Delete Profile Record
+            supabase.table("job_seeker").delete().eq("id", user_id).execute()
+
+        elif recruiter_data.data:
+             # Delete Avatar
+            avatar_url = recruiter_data.data[0].get("profile_picture_url")
+            if avatar_url:
+                import re
+                match = re.search(rf"({user_id}_avatar\.[^?]+)", avatar_url)
+                if match:
+                    delete_file("avatars", match.group(1))
+            
+            # Delete Legal Document
+            legal_doc_url = recruiter_data.data[0].get("legal_document_url")
+            if legal_doc_url:
+                legal_doc_path = f"{user_id}_legal_document.pdf"
+                delete_file("documents", legal_doc_path)
+            
+            # Delete Profile Record
+            supabase.table("recruiters").delete().eq("id", user_id).execute()
+
+        # 3. Delete Auth User (Admin access usually required)
+        from ...services import supabase as supabase_service
+        supabase_service.delete_user(str(user_id))
+
+        return None
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Cleanup failed: {str(e)}")
