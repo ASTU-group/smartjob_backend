@@ -186,3 +186,44 @@ def update_avatar(file: UploadFile = File(...), current_user = Depends(get_curre
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+@router.post("/me/resume", summary="Upload Resume", description="Upload or update the currently authenticated job seeker's resume. Only PDF files are accepted.")
+def update_resume(file: UploadFile = File(...), current_user = Depends(get_current_user)):
+    """
+    Update resume (Job Seeker only).
+    """
+    if file.content_type != "application/pdf":
+         raise HTTPException(status_code=400, detail="Resume must be a PDF")
+
+    user_id = current_user.id
+    
+    # Verify Role
+    seeker = supabase.table("job_seeker").select("id").eq("id", user_id).execute()
+    if not seeker.data:
+         raise HTTPException(status_code=403, detail="Only job seekers can have a resume")
+         
+    try:
+        file_content = file.file.read()
+        file_path = f"{user_id}_resume.pdf"
+        
+        # Upsert file
+        supabase.storage.from_("resumes").upload(
+            file_path,
+            file_content,
+            file_options={"upsert": "true", "content-type": "application/pdf"}
+        )
+        
+        # Get Signed URL (valid for 1 year)
+        signed_url_resp = supabase.storage.from_("resumes").create_signed_url(file_path, 31536000)
+        final_url = signed_url_resp.get("signedURL") if isinstance(signed_url_resp, dict) else getattr(signed_url_resp, "signed_url", None)
+
+        if not final_url:
+            final_url = supabase.storage.from_("resumes").get_public_url(file_path)
+        
+        # Update DB
+        supabase.table("job_seeker").update({"resume_url": final_url}).eq("id", user_id).execute()
+        
+        return {"message": "Resume updated", "url": final_url}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
