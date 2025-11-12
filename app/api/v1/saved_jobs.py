@@ -42,3 +42,33 @@ def save_job(job_id: uuid.UUID, current_user = Depends(get_current_user)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+@router.get("/", summary="List Saved Jobs", description="Retrieve all saved jobs for the authenticated Job Seeker.")
+def get_saved_jobs(current_user = Depends(get_current_user)):
+    """
+    Get all saved jobs.
+    """
+    user_id = current_user.id
+    
+    try:
+        # Join saved_jobs with job
+        # Supabase syntax for join: select(*, job(*))
+        response = supabase.table("saved_jobs").select("job_id, created_at, job(*)").eq("job_seeker_id", str(user_id)).execute()
+        
+        # Flatten the structure if needed, or return as is.
+        # The structure will be: [{ "job_id": ..., "job": { "title": ... } }, ...]
+        
+        # Make it cleaner: return list of Jobs
+        saved_list = []
+        for item in response.data:
+            job_data = item.get("job")
+            if job_data:
+                saved_list.append(job_data)
+                
+        return saved_list
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
