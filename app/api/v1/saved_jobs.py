@@ -72,3 +72,21 @@ def get_saved_jobs(current_user = Depends(get_current_user)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Unsave Job", description="Remove a job from saved jobs.")
+def unsave_job(job_id: uuid.UUID, current_user = Depends(get_current_user)):
+    """
+    Unsave a job.
+    """
+    user_id = current_user.id
+    
+    try:
+        response = supabase.table("saved_jobs").delete().eq("job_seeker_id", str(user_id)).eq("job_id", str(job_id)).execute()
+        # if not response.data: 
+        #    raise HTTPException(status_code=404, detail="Saved job not found") -- Supabase delete might not return data if successful?
+        return None
+    except Exception as e:
+         raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
