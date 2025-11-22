@@ -199,3 +199,51 @@ def get_job(job_id: uuid.UUID):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+@router.put("/{job_id}", summary="Update Job Posting", description="Update an existing job posting. Only the recruiter who created the job can perform this action.")
+def update_job(job_id: uuid.UUID, job_update: JobCreate, current_user = Depends(get_current_user)):
+    """
+    Update a job.
+    Only the recruiter who created it can update it.
+    """
+    user_id = current_user.id
+
+    # 1. Fetch job to check ownership
+    try:
+        existing = supabase.table("job").select("recruiter_id").eq("id", job_id).execute()
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        job_owner = existing.data[0].get("recruiter_id")
+        
+        # Ensure job_owner is compared correctly (both strings)
+        if str(job_owner) != str(user_id):
+             raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not authorized to update this job."
+            )
+            
+        # 2. Update
+        response = supabase.table("job").update({
+            "title": job_update.title,
+            "desc": job_update.desc,
+            "deadline": job_update.deadline,
+            "location": job_update.location,
+            "is_remote": job_update.is_remote,
+            "job_type": job_update.job_type,
+            "salary_min": job_update.salary_min,
+            "salary_max": job_update.salary_max,
+            "currency": job_update.currency,
+            "requirements": job_update.requirements,
+            "status": job_update.status
+        }).eq("id", job_id).execute()
+        
+        return response.data[0]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
