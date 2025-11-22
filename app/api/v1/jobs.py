@@ -179,3 +179,23 @@ def get_jobs(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+
+
+@router.get("/{job_id}", summary="Get Job Details", description="Retrieve detailed information about a specific job posting by its ID.")
+def get_job(job_id: uuid.UUID):
+    """
+    Get a specific job.
+    """
+    try:
+        response = supabase.table("job").select("*").eq("id", job_id).execute()
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Job not found")
+        return response.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
