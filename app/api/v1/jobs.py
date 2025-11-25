@@ -247,3 +247,37 @@ def update_job(job_id: uuid.UUID, job_update: JobCreate, current_user = Depends(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+
+@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete Job Posting", description="Delete a job posting. Only the recruiter who created the job can perform this action.")
+def delete_job(job_id: uuid.UUID, current_user = Depends(get_current_user)):
+    """
+    Delete a job.
+    Only the recruiter who created it can delete it.
+    """
+    user_id = current_user.id
+
+    # 1. Fetch job to check ownership
+    try:
+        existing = supabase.table("job").select("recruiter_id").eq("id", job_id).execute()
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        job_owner = existing.data[0].get("recruiter_id")
+        
+        if job_owner != user_id:
+             raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not authorized to delete this job."
+            )
+            
+        # 2. Delete
+        supabase.table("job").delete().eq("id", job_id).execute()
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
