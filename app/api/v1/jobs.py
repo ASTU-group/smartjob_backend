@@ -281,3 +281,29 @@ def delete_job(job_id: uuid.UUID, current_user = Depends(get_current_user)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+
+@router.get("/{job_id}/applications", summary="Get Job Applications (Internal)", description="Retrieve all applications for a specific job. Primarily used by the automated screening workflow.")
+def get_job_applications_for_job(job_id: uuid.UUID, current_user = Depends(get_current_user)):
+    """
+    Fetch all applications for a specific job.
+    Accessible by the recruiter who owns the job.
+    """
+    user_id = current_user.id
+    
+    # 1. Verify Job Ownership
+    try:
+        job_data = supabase.table("job").select("recruiter_id").eq("id", job_id).execute()
+        if not job_data.data:
+            raise HTTPException(status_code=404, detail="Job not found")
+            
+        if str(job_data.data[0].get("recruiter_id")) != str(user_id):
+            raise HTTPException(status_code=403, detail="Not authorized to view these applications.")
+
+        # 2. Fetch Applications with Seeker details
+        response = supabase.table("application").select("*, job_seeker(*)").eq("job_id", job_id).execute()
+        return response.data
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
