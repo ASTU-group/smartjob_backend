@@ -1,6 +1,6 @@
 # Smart Job - FastAPI Backend
 
-A comprehensive Job Board backend built with **FastAPI** and **Supabase**, featuring role-based authentication, job management, intelligent application tracking, and AI-powered candidate screening.
+A comprehensive Job Job backend built with **FastAPI** and **Supabase**, featuring role-based authentication, job management, intelligent application tracking, and AI-powered candidate screening.
 
 ## 🚀 Features
 
